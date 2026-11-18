@@ -271,6 +271,8 @@ const Music = {
     for (let i = 0; i < 16; i++) this.bassPattern.push(rng() > 0.25 ? 1 : 0);
     this.step = 0;
     this.playing = true;
+    this.failures = 0;
+    this.lastError = null;
     Audio2.applyVolumes();
     this.nextTime = Audio2.now() + 0.08;
     this.timer = setInterval(() => this.pump(), 25);
@@ -298,14 +300,25 @@ const Music = {
   },
   pump() {
     if (!this.playing || !Audio2.ready) return;
-    const c = Audio2.ctx;
-    if (c.state === 'suspended') return;
-    let guard = 0;
-    while (this.nextTime < c.currentTime + this.lookahead && guard < 64) {
-      this.scheduleStep(this.step, this.nextTime);
-      this.nextTime += 60 / this.bpm / 2;
-      this.step++;
-      guard++;
+    try {
+      const c = Audio2.ctx;
+      if (c.state === 'suspended') return;
+      let guard = 0;
+      while (this.nextTime < c.currentTime + this.lookahead && guard < 64) {
+        this.scheduleStep(this.step, this.nextTime);
+        this.nextTime += 60 / this.bpm / 2;
+        this.step++;
+        guard++;
+      }
+      this.lastError = null;
+    } catch (e) {
+      /* 音樂壞掉時靜音繼續，不要讓它影響遊戲或每 25ms 洗一次 console */
+      this.failures = (this.failures || 0) + 1;
+      this.lastError = String((e && e.message) || e);
+      if (this.failures > 3) {
+        this.stop(false);
+        if (typeof console !== 'undefined' && console.warn) console.warn('BGM 已停用：' + this.lastError);
+      }
     }
   },
   scheduleStep(s, t) {
@@ -324,7 +337,7 @@ const Music = {
       if (beat === 1 || beat === 3) Audio2.drum(bar % 4 === 3 ? 'clap' : 'snare', t, 0.45 + I * 0.55);
       if (s % 8 === 0 && bar % 4 === 0 && I > 0.45) Audio2.drum('crash', t, 0.6 * I);
     }
-    if (I > 0.25) Audio2.drum(half === 0 ? 'hat' : 'ohat', t, 0.45 + 0.55 * I * R.next());
+    if (I > 0.25) Audio2.drum(half === 0 ? 'hat' : 'ohat', t, 0.45 + 0.55 * I * R());
     else if (s % 2 === 0) Audio2.drum('hat', t, 0.3);
     if (I > 0.12 && (this.bassPattern[s % 16] || beat === 0)) {
       const n = root - 24 + (ch % 12);
@@ -334,15 +347,17 @@ const Music = {
       [0, 2, 4].map(i => root + sc[(ch + i * 2) % sc.length] + 12)
         .forEach(n => Audio2.instrument('pad', midiHz(n), t, stepDur * 7.4, 0.45 + I * 0.9));
     }
-    if (R.next() < 0.16 + I * 0.6) {
-      const deg = R.pick([0, 1, 2, 3, 4, 5, 6, 7, 5, 3]);
-      const n = root + 12 + sc[(ch + deg) % sc.length] + (R.next() < 0.22 ? 12 : 0);
-      Audio2.instrument(this.inst, midiHz(n), t, stepDur * (R.next() < 0.2 ? 2 : 1.2), 0.45 + I * 0.75);
+    if (R() < 0.16 + I * 0.6) {
+      /* R 是 mulberry32 產生的函式，不是 Rng 物件：取樣要用 R() 自己算 */
+      const DEGREES = [0, 1, 2, 3, 4, 5, 6, 7, 5, 3];
+      const deg = DEGREES[Math.floor(R() * DEGREES.length) % DEGREES.length];
+      const n = root + 12 + sc[(ch + deg) % sc.length] + (R() < 0.22 ? 12 : 0);
+      Audio2.instrument(this.inst, midiHz(n), t, stepDur * (R() < 0.2 ? 2 : 1.2), 0.45 + I * 0.75);
     }
-    if (I > 0.55 && R.next() < 0.1) {
-      Audio2.instrument('glass', midiHz(root + 24 + R.pick(sc)), t, stepDur * 3, 0.35);
+    if (I > 0.55 && R() < 0.1) {
+      Audio2.instrument('glass', midiHz(root + 24 + sc[Math.floor(R() * sc.length) % sc.length]), t, stepDur * 3, 0.35);
     }
-    if (I > 0.8 && bar % 4 === 3 && half === 1 && R.next() < 0.5) {
+    if (I > 0.8 && bar % 4 === 3 && half === 1 && R() < 0.5) {
       for (let k = 0; k < 4; k++) {
         Audio2.instrument('bell', midiHz(root + 12 + sc[(k * 2) % sc.length]), t + (k * stepDur) / 4, stepDur / 2, 0.35);
       }

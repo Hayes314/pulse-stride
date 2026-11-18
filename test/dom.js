@@ -108,6 +108,72 @@ function strictify(ctx, onViolation) {
   });
 }
 
+
+/* ------------------------------------------------------------------ *
+ * 假 WebAudio：jsdom 沒有 AudioContext，若不模擬，整個合成器與 BGM
+ * 排程器（js/audio.js）永遠不會被執行——R.next() 的缺陷就是這樣躲過所有
+ * 測試，直到真機才炸。這裡提供最小但行為正確的實作，並記錄發聲次數。
+ * ------------------------------------------------------------------ */
+const audioStats = { oscillators: 0, buffers: 0, gains: 0, started: 0, errors: [] };
+
+function param(value) {
+  const p = {
+    value: value === undefined ? 0 : value,
+    setValueAtTime(v) { p.value = v; return p; },
+    linearRampToValueAtTime(v) { p.value = v; return p; },
+    exponentialRampToValueAtTime(v) { p.value = v; return p; },
+    setTargetAtTime(v) { p.value = v; return p; },
+    cancelScheduledValues() { return p; },
+    setValueCurveAtTime() { return p; }
+  };
+  return p;
+}
+function node(extra) {
+  return Object.assign({
+    connect() { return this; },
+    disconnect() { return this; }
+  }, extra || {});
+}
+class FakeAudioContext {
+  constructor() {
+    this.currentTime = 0;
+    this.sampleRate = 44100;
+    this.state = 'running';
+    this.destination = node();
+    this._timer = setInterval(() => { this.currentTime += 0.05; }, 25);
+    if (this._timer.unref) this._timer.unref();
+  }
+  resume() { this.state = 'running'; return Promise.resolve(); }
+  suspend() { this.state = 'suspended'; return Promise.resolve(); }
+  close() { clearInterval(this._timer); return Promise.resolve(); }
+  createGain() { audioStats.gains++; return node({ gain: param(1) }); }
+  createOscillator() {
+    audioStats.oscillators++;
+    audioStats.started++;
+    const o = node({
+      type: 'sine', frequency: param(440), detune: param(0),
+      start() { }, stop() { setTimeout(() => { if (o.onended) o.onended(); }, 0); },
+      onended: null
+    });
+    return o;
+  }
+  createBiquadFilter() { return node({ type: 'lowpass', frequency: param(1000), Q: param(1), gain: param(0) }); }
+  createDynamicsCompressor() {
+    return node({ threshold: param(0), knee: param(0), ratio: param(1), attack: param(0), release: param(0) });
+  }
+  createBuffer(channels, length, rate) {
+    audioStats.buffers++;
+    const data = new Float32Array(length);
+    return { numberOfChannels: channels, length, sampleRate: rate, duration: length / rate, getChannelData: () => data };
+  }
+  createBufferSource() {
+    return node({ buffer: null, loop: false, start() { }, stop() { }, onended: null });
+  }
+  createStereoPanner() { return node({ pan: param(0) }); }
+  createConvolver() { return node({ buffer: null, normalize: true }); }
+  createWaveShaper() { return node({ curve: null, oversample: 'none' }); }
+}
+
 /* ------------------------------------------------------------------ *
  * 啟動一個 jsdom 實例
  * ------------------------------------------------------------------ */
@@ -137,6 +203,8 @@ async function boot(opts) {
         Object.defineProperty(window, 'innerWidth', { value: width, writable: true, configurable: true });
         Object.defineProperty(window, 'innerHeight', { value: height, writable: true, configurable: true });
       } catch (e) { /* ignore */ }
+      window.AudioContext = FakeAudioContext;
+      window.webkitAudioContext = FakeAudioContext;
 
       const proto = window.HTMLCanvasElement.prototype;
       const original = proto.getContext;
@@ -298,6 +366,20 @@ async function testPlay(width, height, label) {
       label + ' 畫布不溢出視窗（' + Math.round(V.cssW) + '×' + Math.round(V.cssH) + ' / ' + width + '×' + height + '）');
   } else {
     check(false, label + ' 缺少 __PS_DEBUG（供測試讀取 View）');
+  }
+
+  // 音訊路徑：BGM 排程器必須真的有在跑，且不得拋錯
+  const dbg = w.__PS_DEBUG || {};
+  if (dbg.Music && dbg.Audio2) {
+    const before = dbg.Music.step;
+    await sleep(700);
+    const advanced = dbg.Music.step - before;
+    check(dbg.Audio2.ready === true, label + ' AudioContext 已初始化');
+    check(advanced > 0, label + ' BGM 排程器有前進（+' + advanced + ' step）');
+    check(!dbg.Music.lastError, label + ' BGM 排程零錯誤' + (dbg.Music.lastError ? '：' + dbg.Music.lastError : ''));
+    check(audioStats.started > 0, label + ' 音訊節點有實際發聲（' + audioStats.started + ' 個 oscillator）');
+  } else {
+    check(false, label + ' 缺少 __PS_DEBUG.Audio2/Music');
   }
 
   check(g.errors.length === 0, label + ' 執行期間零錯誤' + (g.errors.length ? '：' + g.errors.slice(0, 3).join(' | ') : ''));

@@ -1285,7 +1285,7 @@ function hasQuery(flag) {
 }
 
 if (typeof window !== 'undefined' && hasQuery('debug')) {
-  window.__PS_DEBUG = { View, Store };
+  window.__PS_DEBUG = { View, Store, Audio2, Music };
 }
 
 function selfTestPanel() {
@@ -1377,6 +1377,11 @@ function runSelfTest() {
       step('canvas 讀取像素', () => { throw e; });
     }
 
+    if (typeof Audio2 !== 'undefined' && Audio2.ready) {
+      step('BGM 排程器有前進（step=' + Music.step + '）', () => Music.step > 0 && !Music.lastError);
+    } else {
+      lines.push('… 音訊未啟動（瀏覽器需先有使用者互動），略過 BGM 檢查');
+    }
     step('執行期間無未捕捉錯誤' + (fatal ? '：' + fatal : ''), () => !fatal);
     window.removeEventListener('error', onErr);
 
