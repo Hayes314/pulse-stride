@@ -1,0 +1,11 @@
+{
+  "name": "pulse-stride",
+  "version": "1.0.0",
+  "description": "節拍流星 Pulse Stride — 節奏 × 躲避 × 成長 的單檔 HTML5 音遊風躲避遊戲",
+  "private": true,
+  "scripts": {
+    "build": "./build.sh",
+    "test": "node test/sim.js"
+  },
+  "license": "MIT"
+}
