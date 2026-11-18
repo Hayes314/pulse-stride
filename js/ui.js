@@ -56,13 +56,18 @@ const App = {
   },
 
   setScreen(name, back) {
+    /* 畫面的顯示由 .active 控制（.screen 預設 display:none），
+       show() 只切換 .hidden，兩者不可混用。 */
     document.querySelectorAll('.screen').forEach(sec => sec.classList.remove('active'));
-    show($('screen-' + name), true);
+    const target = $('screen-' + name);
+    if (target) {
+      target.classList.add('active');
+      target.classList.remove('hidden');
+    }
     hideAllOverlays();
     this.prevBack = back || null;
     this.screen = name;
     if (name === 'game') {
-      show($('screen-game'), true);
       this.game && this.game.resize && this.game.resize();
     } else {
       if (this.game) this.game.abort();
@@ -1266,7 +1271,137 @@ function safeBoot() {
   }
 }
 if (typeof window !== 'undefined') window.__PS_APP = App;
+
+/* ------------------------------------------------------------------ *
+ * 除錯與線上自我檢測
+ * ------------------------------------------------------------------
+ * ?debug=1     暴露 View/Store 供自動化測試讀取
+ * ?selftest=1  在真瀏覽器跑一輪端到端檢查，把結果畫在畫面上
+ *              （iOS 沒有 devtools，這是最快拿到失敗細節的方法）
+ * ------------------------------------------------------------------ */
+function hasQuery(flag) {
+  try { return new RegExp('(?:^|[?&])' + flag + '(?:[=&]|$)').test(window.location.search); }
+  catch (e) { return false; }
+}
+
+if (typeof window !== 'undefined' && hasQuery('debug')) {
+  window.__PS_DEBUG = { View, Store };
+}
+
+function selfTestPanel() {
+  let panel = $('selftest-panel');
+  if (!panel) {
+    panel = el('div');
+    panel.id = 'selftest-panel';
+    panel.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:400', 'background:#0b0710', 'color:#e8ecff',
+      'font:13px/1.6 ui-monospace,Menlo,monospace', 'padding:20px', 'overflow:auto',
+      'white-space:pre-wrap', 'word-break:break-word', '-webkit-overflow-scrolling:touch'
+    ].join(';');
+    document.body.appendChild(panel);
+  }
+  return panel;
+}
+
+function runSelfTest() {
+  const panel = selfTestPanel();
+  const lines = [];
+  const title = 'PULSE STRIDE 線上自我檢測  build ' + APP_VERSION;
+  const head = title + '\n' + (navigator.userAgent || '') +
+    '\n畫面 ' + window.innerWidth + '×' + window.innerHeight + '  dpr ' + (window.devicePixelRatio || 1) + '\n';
+  const paint = () => { panel.textContent = head + '\n' + lines.join('\n'); };
+  paint();
+
+  const results = [];
+  const step = (name, fn) => {
+    try {
+      const ok = fn();
+      results.push({ ok: ok !== false, name: name });
+      lines.push((ok === false ? '✗ ' : '✓ ') + name);
+    } catch (e) {
+      results.push({ ok: false, name: name, err: String((e && e.stack) || e) });
+      lines.push('✗ ' + name + '\n    ' + String((e && (e.name + ': ' + e.message)) || e));
+    }
+    paint();
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const fail = () => results.filter((r) => !r.ok).length;
+
+  (async () => {
+    let fatal = null;
+    const onErr = (ev) => { fatal = String((ev && ev.message) || ev); };
+    window.addEventListener('error', onErr);
+
+    step('boot 完成', () => App.booted === true);
+    step('啟動遮罩已消失', () => !!$('boot') && $('boot').classList.contains('gone'));
+    step('CSS 縮放單位 --h 為 px', () => /^[\d.]+px$/.test(document.documentElement.style.getPropertyValue('--h')));
+    step('畫布尺寸不超出視窗', () => View.cssW <= window.innerWidth + 1 && View.cssH <= window.innerHeight + 1);
+    step('模式畫面有 6 個模式', () => document.querySelectorAll('#mode-grid .mode').length === 6);
+
+    for (const s of ['mode', 'growth', 'album', 'achievements', 'themes', 'title']) {
+      App.setScreen(s);
+      step('切換畫面：' + s, () => !!document.querySelector('#screen-' + s + '.active'));
+    }
+
+    try { App.setScreen('mode'); App.startSelected(); } catch (e) { lines.push('✗ 開局拋錯：' + e.message); }
+    step('成功開局', () => !!App.game && !!App.game.chart && App.game.chart.notes.length > 0);
+
+    let guard = 0;
+    while (App.game && App.game.state !== 'play' && guard++ < 200) await sleep(40);
+    step('倒數結束進入 play', () => App.game.state === 'play');
+
+    const t0 = App.game ? App.game.elapsed : 0;
+    const keys = ['ArrowLeft', 'ArrowRight', ' ', 'ArrowRight', 'ArrowLeft'];
+    for (let i = 0; i < 24 && App.game; i++) {
+      const k = keys[i % keys.length];
+      try {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: k }));
+        window.dispatchEvent(new KeyboardEvent('keyup', { key: k }));
+      } catch (e) { /* ignore */ }
+      await sleep(45);
+    }
+    step('節拍時間有推進', () => App.game && App.game.elapsed - t0 > 0.3);
+    step('狀態仍正常（play/over）', () => App.game && (App.game.state === 'play' || App.game.state === 'over'));
+
+    try {
+      const cv = $('game-canvas');
+      const c2d = cv.getContext('2d');
+      const img = c2d.getImageData(0, 0, cv.width, cv.height).data;
+      const seen = new Set();
+      for (let i = 0; i < img.length; i += 4 * 997) {
+        seen.add(img[i] + ',' + img[i + 1] + ',' + img[i + 2]);
+        if (seen.size > 24) break;
+      }
+      step('canvas 確有繪製內容（' + seen.size + ' 色取樣）', () => seen.size > 5);
+    } catch (e) {
+      step('canvas 讀取像素', () => { throw e; });
+    }
+
+    step('執行期間無未捕捉錯誤' + (fatal ? '：' + fatal : ''), () => !fatal);
+    window.removeEventListener('error', onErr);
+
+    if (App.game) { try { App.game.abort(); } catch (e) { /* ignore */ } }
+    if (!fail()) App.setScreen('title');
+
+    lines.push('');
+    lines.push(fail() === 0
+      ? '全部通過（' + results.length + ' 項）— 把這個畫面截圖即可'
+      : fail() + ' / ' + results.length + ' 項失敗 — 請截圖回報');
+    paint();
+  })();
+}
+
+if (typeof window !== 'undefined' && hasQuery('selftest')) {
+  window.addEventListener('error', () => { /* 面板本身會顯示 */ });
+}
+
 if (typeof document !== 'undefined') {
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', safeBoot);
-  else safeBoot();
+  const boot = () => {
+    safeBoot();
+    if (typeof window !== 'undefined' && hasQuery('selftest')) {
+      setTimeout(() => { try { runSelfTest(); } catch (e) { console.error(e); } }, 1200);
+    }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 }

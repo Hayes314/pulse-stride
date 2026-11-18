@@ -5,7 +5,12 @@
   "private": true,
   "scripts": {
     "test": "node test/sim.js",
+    "test:dom": "node test/dom.js",
     "serve": "python3 -m http.server 8080"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1.80",
+    "jsdom": "^31.0.1"
+  }
 }

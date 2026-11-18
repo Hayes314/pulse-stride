@@ -353,6 +353,34 @@ class Game {
     this.player = null;
     this.chart = null;
     this.state = 'idle';
+    /* 待機（選單背景）就會進 render/update，所有數值狀態必須先有初值；
+       否則 beatPulse 之類的 undefined 會變成 NaN 傳進 canvas API，
+       WebKit 會直接丟 "The provided value is non-finite"。 */
+    this.score = 0;
+    this.displayScore = 0;
+    this.combo = 0;
+    this.maxCombo = 0;
+    this.mult = 1;
+    this.phaseEnergy = 100;
+    this.maxPhase = 100;
+    this.flow = 100;
+    this.maxFlow = 100;
+    this.beatPulse = 0;
+    this.hitFlash = 0;
+    this.slowMoLeft = 0;
+    this.slowMo = 0.35;
+    this.scrollMult = 1;
+    this.elapsed = 0;
+    this.bpmTime = 0;
+    this.stage = 0;
+    this.lives = 3;
+    this.hazards = [];
+    this.orbs = [];
+    this.lastPlanned = null;
+    this.nextScan = 0;
+    this.nextIndex = 0;
+    this.waves = [];
+    this.idleT = 0;
   }
   attach(canvas) {
     this.canvas = canvas;

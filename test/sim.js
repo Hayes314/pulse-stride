@@ -103,6 +103,13 @@ class El {
       if (idm) { child.id = idm[1]; registry[idm[1]] = child; }
       const v = /value="([^"]*)"/.exec(attrs);
       if (v) child.value = v[1];
+      /* 真瀏覽器會把 canvas 的 width/height 屬性映射成數值屬性 */
+      const wAttr = /\bwidth="(\d+)"/.exec(attrs);
+      const hAttr = /\bheight="(\d+)"/.exec(attrs);
+      if (tag === 'canvas') {
+        child.width = wAttr ? parseInt(wAttr[1], 10) : 300;
+        child.height = hAttr ? parseInt(hAttr[1], 10) : 150;
+      }
       child.parentNode = this;
       this.children.push(child);
       if (globalThis.__DBG_PARSE) console.log('parsed', tag, child.dataset.act, 'own act', Object.prototype.hasOwnProperty.call(child.dataset,'act'), typeof matches);
@@ -176,11 +183,29 @@ function matches(n, sel) {
 
 const registry = {};
 const ctxCalls = {};
+// 與 WebKit 一致：任何非有限的數值參數都要拋錯（真機上會讓整頁黑屏）
+function assertFinite(name, args) {
+  for (const a of args) {
+    if (typeof a === 'number' && !Number.isFinite(a)) {
+      throw new TypeError('The provided value is non-finite (' + name + ')');
+    }
+  }
+}
+function makeGradient(name) {
+  return {
+    addColorStop(offset, color) {
+      assertFinite(name + '.addColorStop', [offset]);
+      if (typeof color === 'string' && /NaN|Infinity|undefined/.test(color)) {
+        throw new TypeError('invalid color: ' + color);
+      }
+    }
+  };
+}
 function makeCtx() {
   const target = {
     canvas: null,
-    createLinearGradient: () => ({ addColorStop() {} }),
-    createRadialGradient: () => ({ addColorStop() {} }),
+    createLinearGradient: (...a) => { assertFinite('createLinearGradient', a); return makeGradient('linear'); },
+    createRadialGradient: (...a) => { assertFinite('createRadialGradient', a); return makeGradient('radial'); },
     createPattern: () => ({}),
     measureText: () => ({ width: 10 }),
     getImageData: () => ({ data: [] }),
@@ -189,9 +214,22 @@ function makeCtx() {
     fill() {}, stroke() {}, fillText() {}, strokeText() {}, clip() {}, drawImage() {}, putImageData() {}, setLineDash() {},
     quadraticCurveTo() {}, bezierCurveTo() {}
   };
+  /* 逐呼叫驗證非有限值很慢（435 組矩陣會從 4 分變 15 分以上），
+     因此只在 STRICT=1 時開啟；真正的嚴格驗證交給 test/dom.js（真 Canvas）。 */
+  const STRICT_CANVAS = process.env.STRICT === '1';
+  const checked = STRICT_CANVAS ? new Set(['fillRect', 'strokeRect', 'clearRect', 'arc', 'ellipse', 'rect', 'roundRect',
+    'moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo', 'translate', 'rotate', 'scale', 'setTransform',
+    'fillText', 'strokeText', 'drawImage', 'measureText', 'setLineDash', 'clip', 'putImageData', 'fill', 'stroke']) : new Set();
   return new Proxy(target, {
     get(t, k) {
-      if (k in t) { ctxCalls[k] = (ctxCalls[k] || 0) + 1; return t[k]; }
+      if (k in t) {
+        const v = t[k];
+        if (typeof v === 'function' && checked.has(k)) {
+          return function () { assertFinite(k, arguments); ctxCalls[k] = (ctxCalls[k] || 0) + 1; return v.apply(t, arguments); };
+        }
+        ctxCalls[k] = (ctxCalls[k] || 0) + 1;
+        return v;
+      }
       return undefined;
     },
     set(t, k, v) { t[k] = v; if (typeof v === 'number' && !isFinite(v)) throw new Error('non-finite ctx.' + k + ' = ' + v); return true; }

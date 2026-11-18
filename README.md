@@ -69,8 +69,34 @@ test/sim.js       # Node DOM/Canvas 模擬器，80 項自動化檢查
 ## 開發
 
 ```bash
-npm test                        # 跑完整測試（約 4 分鐘）
+npm install                     # 安裝測試用 devDependencies（jsdom + @napi-rs/canvas）
+npm test                        # 邏輯模擬器（435 組矩陣，約 4 分鐘）
+npm run test:dom                # 真 DOM + 真 Canvas 端到端測試（約 20 秒）
 npm run serve                   # 開 http://localhost:8080 本機預覽
+```
+
+### 兩套測試的分工
+
+| | `test/sim.js` | `test/dom.js` |
+|---|---|---|
+| DOM | 自製輕量模擬 | **jsdom（真 DOM 語意）** |
+| Canvas | 空函式 | **@napi-rs/canvas 真 2D context** |
+| 擅長 | 大量組合（模式×難度×世界）、流程邏輯 | 啟動、畫面顯示、真繪製、真 API 限制 |
+| 時間 | 約 4 分鐘 | 約 20 秒 |
+
+`test/dom.js` 是為了補上一個教訓：`element.children` 在真瀏覽器是唯讀的
+`HTMLCollection`、canvas 會拒絕非有限值，而自製模擬器把兩者都放行了——
+導致兩個在 Safari 上整頁黑屏的缺陷在測試中「全綠」。現在真 DOM／真 Canvas
+的行為由 jsdom + @napi-rs/canvas 覆蓋，並額外套一層 WebKit 等級的參數檢查。
+
+### 線上一鍵自我檢測
+
+在網址後加 `?selftest=1`，頁面會在真瀏覽器跑一輪端到端檢查（啟動、六個畫面、
+開局、合成輸入、canvas 實際繪製），把結果直接畫在畫面上。iOS 沒有 devtools
+時這是最快的回報方式。
+
+```
+https://hayes314.github.io/pulse-stride/?selftest=1
 ```
 
 `test/sim.js` 以最小 DOM/Canvas 模擬器在 Node 中實跑遊戲，涵蓋：
