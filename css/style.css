@@ -1,16 +1,3 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0a0a12">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="節拍流星 Pulse Stride — 節奏 × 躲避 × 成長 的 HTML5 音遊風躲避遊戲">
-<title>節拍流星 Pulse Stride</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338f2ff'/%3E%3Cstop offset='1' stop-color='%23b54bff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%2307070f'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='url(%23g)' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='6' fill='url(%23g)'/%3E%3C/svg%3E">
-<style>
 /* ==========================================================================
    節拍流星 Pulse Stride — 樣式表
    所有尺寸皆以 --h（畫面高度）為基準單位，確保任何螢幕比例都能完整遊玩。
@@ -269,8 +256,6 @@ input[type=range]{ width: 100%; accent-color: var(--accent); }
 .pb-marks i:last-child{ border-right: none; }
 #hud-right{ position: absolute; right: 0; top: 0; display: flex; gap: 0.006rem; }
 #hud-right .btn{ background: rgba(0,0,0,.4); }
-#hud-bottom{ display: flex; align-items: center; justify-content: center; gap: 0.012rem; font-size: 0.0125rem; color: var(--dim); }
-#hud-bottom .chip{ background: rgba(0,0,0,.35); color: var(--text); }
 #combo-display{
   position: absolute; pointer-events: none; left: 50%; top: 24%; transform: translate(-50%, -50%);
   display: flex; flex-direction: column; align-items: center; line-height: 1;
@@ -562,7 +547,6 @@ input[type=range]{ width: 100%; accent-color: var(--accent); }
 .ph{ font-size: max(0.0115rem, 9px); }
 .ph-num{ font-size: max(0.0125rem, 9px); }
 #combo-label{ font-size: max(0.019rem, 11px); }
-#hud-bottom{ font-size: max(0.0125rem, 9.5px); }
 #hint-bar{ font-size: max(0.016rem, 12px); }
 .chip{ font-size: max(0.014rem, 10px); }
 .btn{ font-size: max(0.021rem, 12px); }
@@ -587,69 +571,3 @@ input[type=range]{ width: 100%; accent-color: var(--accent); }
 #boot.fatal{ background: #12060c; padding: 24px; }
 #boot .b-tip{ font-size: 0.019rem; line-height: 1.5; color: var(--dim); max-width: min(86vw, 560px); text-align: center; padding: 0 12px; }
 .noscript-note{ position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; background: #07070f; color: #eef; font-family: sans-serif; z-index: 300; }
-</style>
-</head>
-<body>
-<noscript><div class="noscript-note">此遊戲需要 JavaScript 與 Canvas 支援，請開啟 JavaScript 後重新整理。</div></noscript>
-
-<script>
-/* 啟動守衛：任何在遊戲主程式之前/之中的錯誤都會直接顯示在畫面上，
-   避免使用者只看到一片黑（iOS Safari 無法開 devtools，只能靠這個回報）。 */
-(function () {
-  var shown = false;
-  function showFatal(title, detail) {
-    try {
-      if (shown) return;
-      shown = true;
-      var boot = document.getElementById('boot');
-      var tip = document.getElementById('boot-tip');
-      if (boot) {
-        boot.classList.remove('gone');
-        boot.classList.add('fatal');
-        boot.style.opacity = '1';
-      }
-      if (tip) {
-        var ua = (navigator && navigator.userAgent) ? navigator.userAgent : '';
-        tip.textContent = '⚠ ' + title + '\n\n' + detail + '\n\n裝置：' + ua + '\n請把這個畫面截圖回報。';
-      }
-    } catch (e) { /* 連這裡都失敗就放棄 */ }
-  }
-  window.__PS_FATAL = showFatal;
-  window.addEventListener('error', function (ev) {
-    var msg = ev && ev.message ? ev.message : 'unknown error';
-    var where = (ev && ev.filename) ? String(ev.filename).split('/').pop() + ':' + (ev.lineno || 0) : '';
-    showFatal('啟動錯誤', msg + (where ? '\n位置：' + where : ''));
-  }, true);
-  window.addEventListener('unhandledrejection', function (ev) {
-    var r = ev && ev.reason;
-    showFatal('未處理的錯誤', (r && (r.stack || r.message)) || String(r));
-  });
-  /* 立即校準 UI 縮放基準（與 View.compute 一致），讓首屏就用正確尺度 */
-  function calibrateH() {
-    try {
-      var vw = window.innerWidth || 960, vh = window.innerHeight || 600;
-      var h = Math.max(220, Math.min(vh, vw * 0.52));
-      document.documentElement.style.setProperty('--h', h.toFixed(2) + 'px');
-    } catch (e) { /* ignore */ }
-  }
-  calibrateH();
-  window.addEventListener('resize', calibrateH);
-  window.addEventListener('orientationchange', calibrateH);
-  /* 計時保險：3 秒內沒有完成初始化，也要給出可讀訊息 */
-  setTimeout(function () {
-    if (!window.__PS_APP) {
-      showFatal('無法啟動', '3 秒內未完成初始化。可能是瀏覽器阻擋、檔案未完整下載，或版本過舊。');
-    }
-  }, 3000);
-})();
-</script>
-<div id="bgfx"></div>
-<div id="bgfx2"></div>
-
-<div id="boot">
-  <div class="b-logo">PULSE STRIDE</div>
-  <div class="b-bar"><div class="b-fill" id="boot-fill"></div></div>
-  <div class="b-tip" id="boot-tip">正在校準節拍器…</div>
-</div>
-
-<div id="root">

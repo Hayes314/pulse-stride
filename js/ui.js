@@ -1,3 +1,4 @@
+'use strict';
 
 /* ============================== 應用層 ============================== */
 const App = {
@@ -1232,8 +1233,6 @@ function positionHud() {
   hud.style.width = Math.min(cw - pad * 2, vw - safe.l - safe.r - pad * 2) + 'px';
   const right = $('hud-right');
   if (right) right.style.right = '0px';
-  const bottom = $('hud-bottom');
-  if (bottom) bottom.style.bottom = '0px';
 }
 
 /* ============================== 日期 / 全域工具 ============================== */
@@ -1265,6 +1264,3 @@ if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', safeBoot);
   else safeBoot();
 }
-</script>
-</body>
-</html>

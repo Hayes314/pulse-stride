@@ -1,4 +1,3 @@
-<script>
 'use strict';
 /* ==========================================================================
  *  節拍流星 Pulse Stride
@@ -276,7 +275,6 @@ const SKILLS = {
 };
 const SKILL_IDS = ['dash', 'shield', 'magnet', 'blink', 'warp'];
 /* 累積型技能升級（用碎片在圖鑑購買） */
-const SKILL_TIERS = { shield: 3, magnet: 3, blink: 2, warp: 2 };
 function skillLevel(id) {
   const s = Store.data.skills || {};
   return typeof s[id] === 'number' ? s[id] : (s[id] ? 1 : 0);

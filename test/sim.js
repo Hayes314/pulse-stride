@@ -9,7 +9,25 @@ const htmlPath = ['index.html', 'game.html']
   .map((f) => path.join(rootDir, f))
   .find((f) => fs.existsSync(f));
 if (!htmlPath) throw new Error('找不到 index.html 或 game.html，請先執行 ./build.sh');
-const html = fs.readFileSync(htmlPath, 'utf8');
+const rawHtml = fs.readFileSync(htmlPath, 'utf8');
+
+// 把 <link rel=stylesheet> 與 <script src> 內嵌，讓模擬器像瀏覽器一樣依序執行
+function inlineAssets(doc, root) {
+  doc = doc.replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, (tag) => {
+    const href = /href=["']([^"']+)["']/.exec(tag);
+    if (!href) return tag;
+    const file = path.join(root, href[1]);
+    if (!fs.existsSync(file)) throw new Error('缺少樣式檔 ' + href[1]);
+    return '<style>\n' + fs.readFileSync(file, 'utf8') + '\n</style>';
+  });
+  doc = doc.replace(/<script[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi, (tag, src) => {
+    const file = path.join(root, src);
+    if (!fs.existsSync(file)) throw new Error('缺少腳本檔 ' + src);
+    return '<script>\n' + fs.readFileSync(file, 'utf8') + '\n</script>';
+  });
+  return doc;
+}
+const html = inlineAssets(rawHtml, rootDir);
 // 頁面可能有多個 <script>（啟動守衛 + 主程式），依序全部執行
 const scriptBlocks = [];
 {

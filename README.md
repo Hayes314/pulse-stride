@@ -44,9 +44,9 @@
 
 ## 技術重點
 
-- **單一檔案**：`index.html` 約 4,400 行、218 KB，零依賴、零外部請求
+- **零依賴、零外部請求**：沒有框架、沒有 CDN、沒有圖片或音檔，全部由程式即時產生
 - **音訊全程序化**：WebAudio 即時合成 BGM（鼓、貝斯、和弦墊、琶音、五聲音階跑動）與所有音效；BGM 的 BPM 與遊戲節拍共用同一個時鐘，確保「視覺＝聽覺」
-- **任何螢幕比例**：UI 一律以畫面高度 `--h` 為基準縮放；Canvas 依長寬比選擇參考解析度並等比置中，HUD 以 canvas 實際顯示區域定位並扣除瀏海安全區
+- **任何螢幕比例**：UI 縮放基準 `--h` 由 JS 以 px 寫入（不依賴 `dvh`），畫布以 `min(vw/refW, vh/refH)` 等比貼合視窗，HUD 依實際顯示區域定位並扣除瀏海安全區
 - **無縫適配**：手機直向／橫向、平板、方形、超寬（到 5,120×1,440）皆測試通過
 - **存檔**：localStorage，含版本遷移與損壞資料修正
 - **無障礙／體驗**：可關閉震動、閃光、粒子；`prefers-reduced-motion` 自動降低動畫
@@ -54,22 +54,23 @@
 ## 專案結構
 
 ```
-index.html          # 建置產物（可直接開或部署）
-build.sh            # 合併 src/ 產生 index.html
-src/
-  part-head.html    # <head>、全部 CSS、主題變數
-  part-screens.html # 各畫面 HTML
-  part-js-a.js      # 資料層：主題、世界、災厄、成就、存檔
-  part-js-b.js      # 引擎：WebAudio、圖表生成、物理、渲染
-  part-js-c.js      # 應用層：UI、輸入、流程、結果
-test/sim.js         # Node DOM/Canvas 模擬器，74 項自動化檢查
+index.html        # 頁面骨架、各畫面 HTML、啟動守衛
+css/style.css     # 全部樣式：主題變數、版面、HUD、覆蓋層、響應式
+js/data.js        # 資料層：工具函式、存檔、16 套主題、29 個世界、災厄、成就
+js/audio.js       # WebAudio 合成器（音色/鼓組/音效）與 BGM 時序器
+js/engine.js      # 引擎：尺寸管理、圖表生成、判定、粒子、渲染
+js/ui.js          # 應用層：畫面切換、輸入、成長系統、結果結算
+test/sim.js       # Node DOM/Canvas 模擬器，80 項自動化檢查
 ```
+
+腳本以傳統 `<script>` 依序載入（data → audio → engine → ui），沒有打包步驟、沒有模組載入器，
+直接用瀏覽器開 `index.html` 也能跑。
 
 ## 開發
 
 ```bash
-./build.sh                      # 重新建置 index.html
-node test/sim.js                # 跑完整測試（約 4 分鐘）
+npm test                        # 跑完整測試（約 4 分鐘）
+npm run serve                   # 開 http://localhost:8080 本機預覽
 ```
 
 `test/sim.js` 以最小 DOM/Canvas 模擬器在 Node 中實跑遊戲，涵蓋：
@@ -81,6 +82,8 @@ node test/sim.js                # 跑完整測試（約 4 分鐘）
 - 鍵盤、滑鼠、觸控手勢、點按車道
 - 設定、主題、技能、任務、成就互動
 - 存檔遷移與損壞資料
+- Safari 相容性回歸（`--h` 必須是 px、漸層文字須有 @supports 保護、啟動守衛存在）
+- 每個解析度驗證畫布不溢出、文字仍在可讀範圍
 - 12 場隨機輸入壓力測試
 
 ## 授權
