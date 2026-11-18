@@ -380,6 +380,36 @@ console.log('T1b: layout unit hardening');
   win.innerWidth = 1280; win.innerHeight = 720; App.onResize();
 }
 
+// ---- 測試 1c：真實 DOM 相容性靜態檢查 ----
+// 模擬器的 children 是可寫陣列，真瀏覽器是唯讀 HTMLCollection；
+// 之前就是 `dg.children.length = 0` 在 Safari 上丟 TypeError 導致整頁黑屏。
+console.log('T1c: real-DOM compatibility lint');
+{
+  const jsFiles = ['js/data.js', 'js/audio.js', 'js/engine.js', 'js/ui.js'];
+  const sources = jsFiles.map((f) => fs.readFileSync(path.join(rootDir, f), 'utf8'));
+  const forbidden = [
+    [/\bchildren\s*\.\s*length\s*=/, '不得對 children.length 賦值（HTMLCollection 唯讀）'],
+    [/\bchildNodes\s*\.\s*length\s*=/, '不得對 childNodes.length 賦值'],
+    [/\.children\s*=\s*[^=]/, '不得覆寫 element.children'],
+    [/\.classList\s*=\s*[^=]/, '不得覆寫 element.classList'],
+    [/\.style\s*=\s*['"`]/, '不得以字串覆寫 element.style'],
+    [/document\.all\b/, '不得使用 document.all']
+  ];
+  let hits = 0;
+  sources.forEach((src, i) => {
+    const lines = src.split('\n');
+    lines.forEach((line, ln) => {
+      forbidden.forEach(([re, why]) => {
+        if (re.test(line) && !/^\s*\/\//.test(line)) {
+          hits++;
+          console.log('    ! ' + jsFiles[i] + ':' + (ln + 1) + ' ' + why + ' → ' + line.trim().slice(0, 70));
+        }
+      });
+    });
+  });
+  check(hits === 0, 'no writes to read-only DOM collections');
+}
+
 // ---- 測試 2：切換每個畫面 ----
 console.log('T2: screens');
 ['mode', 'growth', 'album', 'achievements', 'themes', 'title'].forEach(s => {

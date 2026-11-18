@@ -14,6 +14,23 @@
  *  - 進度、解鎖、主題、成就、任務全部儲存在 localStorage。
  * ========================================================================== */
 
+/* 版本標記：顯示在設定畫面，方便確認瀏覽器是否仍在使用舊快取 */
+const APP_VERSION = '1.2.0';
+
+function APP_UA_SHORT() {
+  try {
+    const ua = navigator.userAgent || '';
+    const ios = /iPhone|iPad|iPod/.test(ua);
+    const m = /Version\/([\d.]+).*Safari/.exec(ua);
+    if (m) return (ios ? 'iOS' : 'macOS') + ' Safari ' + m[1];
+    const c = /Chrome\/([\d.]+)/.exec(ua);
+    if (c) return 'Chromium ' + c[1].split('.')[0];
+    const f = /Firefox\/([\d.]+)/.exec(ua);
+    if (f) return 'Firefox ' + f[1].split('.')[0];
+    return ios ? 'iOS' : 'Browser';
+  } catch (e) { return 'Browser'; }
+}
+
 /* ============================== 工具函式 ============================== */
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);

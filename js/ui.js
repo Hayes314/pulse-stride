@@ -156,7 +156,6 @@ const App = {
     });
     const dg = $('diff-grid');
     dg.innerHTML = '';
-    dg.children.length = 0;
     const doneWorlds = Object.keys(d.stats.worldsCleared || {}).length;
     this.prevUnlocked = typeof this.prevUnlocked === 'number' ? this.prevUnlocked : 0;
     DIFFS.forEach(df => {
@@ -373,6 +372,10 @@ const App = {
         '衝刺：<b>空格</b>／<b>Shift</b>／<b>Z</b>／雙擊方向鍵／觸控 ⚡<br>' +
         '暫停：<b>Esc</b>／<b>P</b>；遊戲中 <b>M</b> 靜音；<b>R</b> 重試<br>' +
         '全螢幕：<b>F</b>；切換主題：<b>T</b>' +
+      '</div>' +
+      '<div class="row" style="justify-content:space-between;align-items:center">' +
+        '<span class="dim mono" style="font-size:max(0.012rem,10px)">build ' + APP_VERSION + '</span>' +
+        '<span class="dim" style="font-size:max(0.012rem,10px)">' + APP_UA_SHORT() + '</span>' +
       '</div>' +
       '<div class="dlg-actions">' +
         '<button class="btn btn-ghost btn-danger" data-act="reset">清除存檔</button>' +
@@ -796,7 +799,6 @@ const App = {
     setText($('ach-count'), done + ' / ' + ACHIEVEMENTS.length);
     setText($('ach-claimed'), Store.data.frag);
     list.innerHTML = '';
-    list.children.length = 0;
     ACHIEVEMENTS.forEach(a => {
       const isDone = !!Store.data.ach[a.id];
       const rowEl = el('div', 'ach' + (isDone ? ' done' : ''));
@@ -1252,7 +1254,11 @@ function safeBoot() {
     console.error('boot failed', err);
     if (typeof window !== 'undefined') window.__PS_BOOT_ERROR = String((err && err.stack) || err);
     if (typeof window !== 'undefined' && window.__PS_FATAL) {
-      window.__PS_FATAL('初始化失敗', String((err && (err.stack || err.message)) || err));
+      const head = err && err.name
+        ? err.name + ': ' + (err.message || String(err))
+        : String(err);
+      const trace = err && err.stack ? '\n\n' + err.stack : '';
+      window.__PS_FATAL('初始化失敗', head + trace);
     } else {
       const tip = $('boot-tip');
       if (tip) tip.textContent = '初始化失敗，請重新整理：' + (err && err.message ? err.message : err);
