@@ -91,6 +91,12 @@ const App = {
     root.style.setProperty('--text', mixHex('#ffffff', c[2], 0.12));
     root.style.setProperty('--dim', mixHex(c[6], c[2], 0.42));
     root.style.setProperty('--player', t.player || c[2]);
+    /* 以 rgba() 預先算好強調色的半透明版本：
+       舊版 Safari 不支援 color-mix()，直接給它可用的值，避免背景光暈整片消失 */
+    root.style.setProperty('--accentA', rgba(c[2], 0.18));
+    root.style.setProperty('--accent2A', rgba(c[3], 0.20));
+    root.style.setProperty('--accent3A', rgba(c[4], 0.10));
+    root.style.setProperty('--glow', rgba(c[2], 0.28));
     document.documentElement.setAttribute('data-theme', t.id);
     if (!Store.data.stats.themesUsed) Store.data.stats.themesUsed = {};
     Store.data.stats.themesUsed[t.id] = true;
@@ -952,7 +958,7 @@ const App = {
         const dx = e.clientX - sx;
         const dy = e.clientY - sy;
         if (!moved && Math.abs(dx) < 10 && Math.abs(dy) > 60) return;
-        const laneShift = Math.round(dx / Math.max(18, View.laneW * View.sh));
+        const laneShift = Math.round(dx / Math.max(18, View.laneW * View.scale));
         if (sl0 + laneShift !== curLane) {
           curLane = sl0 + laneShift;
           moved = true;
@@ -963,7 +969,7 @@ const App = {
         if (!this.input.pointer) return;
         const quick = now() - t0 < 220;
         const dx = e ? e.clientX - sx : 0;
-        if (quick && Math.abs(dx) > Math.max(60, View.laneW * View.sh * 1.6) && Math.abs(dx) / Math.max(1, now() - t0) > 0.6) {
+        if (quick && Math.abs(dx) > Math.max(60, View.laneW * View.scale * 1.6) && Math.abs(dx) / Math.max(1, now() - t0) > 0.6) {
           this.input.pointer = null;
           this.game && this.game.dash();
           return;
@@ -1213,14 +1219,14 @@ function applyResult(r) {
 function positionHud() {
   const hud = $('hud');
   if (!hud) return;
-  const sh = View.sh;
   const safe = View.safe;
+  const px = View.scale;
   // 以 canvas 實際顯示大小為準
   const cw = View.cssW, ch = View.cssH;
   const vw = window.innerWidth, vh = window.innerHeight;
   const left = (vw - cw) / 2;
   const top = (vh - ch) / 2;
-  const pad = Math.max(8, View.hudPad * sh);
+  const pad = Math.max(8, View.hudPad * px);
   hud.style.left = Math.max(left + pad, safe.l + pad) + 'px';
   hud.style.top = Math.max(top + pad, safe.t + pad) + 'px';
   hud.style.width = Math.min(cw - pad * 2, vw - safe.l - safe.r - pad * 2) + 'px';
@@ -1245,12 +1251,13 @@ function safeBoot() {
     App.init();
   } catch (err) {
     console.error('boot failed', err);
-    const boot = $('boot');
-    if (boot) {
+    if (typeof window !== 'undefined') window.__PS_BOOT_ERROR = String((err && err.stack) || err);
+    if (typeof window !== 'undefined' && window.__PS_FATAL) {
+      window.__PS_FATAL('初始化失敗', String((err && (err.stack || err.message)) || err));
+    } else {
       const tip = $('boot-tip');
       if (tip) tip.textContent = '初始化失敗，請重新整理：' + (err && err.message ? err.message : err);
     }
-    if (typeof window !== 'undefined') window.__PS_BOOT_ERROR = String(err && err.stack || err);
   }
 }
 if (typeof window !== 'undefined') window.__PS_APP = App;

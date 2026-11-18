@@ -10,9 +10,19 @@ const htmlPath = ['index.html', 'game.html']
   .find((f) => fs.existsSync(f));
 if (!htmlPath) throw new Error('找不到 index.html 或 game.html，請先執行 ./build.sh');
 const html = fs.readFileSync(htmlPath, 'utf8');
-const scriptMatch = /<script>([\s\S]*?)<\/script>/.exec(html);
-if (!scriptMatch) throw new Error('script not found');
-const bodyHtml = html.slice(html.indexOf('<body>') + 6, html.indexOf('<script>'));
+// 頁面可能有多個 <script>（啟動守衛 + 主程式），依序全部執行
+const scriptBlocks = [];
+{
+  const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html))) scriptBlocks.push(m[1]);
+}
+if (!scriptBlocks.length) throw new Error('script not found');
+// 取 <body> 之後的全部內容，並剝掉 <script> 區塊（避免把腳本裡的樣板字串當成標籤解析）
+const bodyStart = html.indexOf('<body>') + 6;
+const bodyEnd = html.lastIndexOf('</body>');
+const bodyHtml = html.slice(bodyStart, bodyEnd > bodyStart ? bodyEnd : html.length)
+  .replace(/<script[\s\S]*?<\/script>/g, '');
 
 let nodeCount = 0;
 class ClassList {
@@ -287,7 +297,7 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(scriptMatch[1], sandbox, { filename: 'game.js' });
+scriptBlocks.forEach((code, i) => vm.runInContext(code, sandbox, { filename: 'script-' + i + '.js' }));
 
 const App = win.__PS_APP;
 if (!App) throw new Error('App not exported; boot error: ' + win.__PS_BOOT_ERROR);
@@ -333,6 +343,24 @@ stepFrames(3);
 check(App.screen === 'title', 'initial screen is title');
 check(App.game && App.game.pal, 'game has palette');
 check(registry['ts-level'] && registry['ts-level']._text === '1', 'title level shows 1 (got ' + (registry['ts-level'] && registry['ts-level']._text) + ')');
+
+// ---- 測試 1b：Safari 相容性回歸（--h 必須是 px，不能依賴 dvh）----
+console.log('T1b: layout unit hardening');
+{
+  const rootStyle = document.documentElement.style;
+  const hVar = rootStyle._p['--h'];
+  check(typeof hVar === 'string' && /^[\d.]+px$/.test(hVar), 'CSS --h written as px by JS (got ' + hVar + ')');
+  win.innerWidth = 1180; win.innerHeight = 820;   // iPad 橫向
+  App.onResize();
+  const expect = (vw, vh) => Math.max(460, Math.min(1000, Math.min(vh, vw * 1.9)));
+  const h2 = parseFloat(document.documentElement.style._p['--h']);
+  check(Math.abs(h2 - expect(1180, 820)) < 0.5, 'iPad landscape --h = ' + h2.toFixed(1) + 'px');
+  check(!/--h:[^;]*dvh/.test(html), 'no dvh inside --h declaration');
+  check(!/font-size:\s*var\(--h\)/.test(html) || /style\.setProperty\('--h'/.test(html), 'font-size:var(--h) is backed by JS px writes');
+  check(/@supports \(\(-webkit-background-clip: text\)/.test(html), 'gradient text is behind @supports guard');
+  check(/window\.__PS_FATAL/.test(html), 'fatal-error overlay exists for non-devtools devices');
+  win.innerWidth = 1280; win.innerHeight = 720; App.onResize();
+}
 
 // ---- 測試 2：切換每個畫面 ----
 console.log('T2: screens');
@@ -444,8 +472,15 @@ for (const [w, h] of sizes) {
   const V = vm.runInContext('View', sandbox);
   let physErr = 0;
   if (g.player) physErr = Math.max(Math.abs(g.player.x - V.laneCenter(g.player.lane)) - V.laneW, 0);
-  const ok = isFinite(g.pal.player.length) && isFinite(g.player.x) && View_ok() && physErr < 1;
+  const V2 = vm.runInContext('View', sandbox);
+  const fitsW = V2.cssW <= w + 1, fitsH = V2.cssH <= h + 1;
+  const uiH = parseFloat(document.documentElement.style._p['--h']);
+  const bodyFont = 0.022 * uiH;                 /* .btn 字級 */
+  const readable = bodyFont >= 9.5 && uiH >= 460 && uiH <= 1001;
+  const ok = isFinite(g.pal.player.length) && isFinite(g.player.x) && View_ok() && physErr < 1 && fitsW && fitsH && readable;
   if (physErr >= 1) failures++;
+  if (!fitsW || !fitsH) { failures++; console.log('    ! canvas overflow ' + Math.round(V2.cssW) + 'x' + Math.round(V2.cssH) + ' in ' + w + 'x' + h); }
+  if (!readable) { failures++; console.log('    ! unreadable ui --h=' + uiH.toFixed(1) + ' btn=' + bodyFont.toFixed(1) + 'px'); }
   function View_ok() { return vm.runInContext('View', sandbox).pathW > 0 && vm.runInContext('View', sandbox).laneW > 0 && isFinite(vm.runInContext('View', sandbox).cssW); }
   check(ok, w + 'x' + h + ' ref=' + vm.runInContext('View', sandbox).W + 'x' + vm.runInContext('View', sandbox).H + ' css=' + Math.round(vm.runInContext('View', sandbox).cssW) + 'x' + Math.round(vm.runInContext('View', sandbox).cssH));
   g.abort();

@@ -370,12 +370,21 @@ const View = {
     const refH = Math.round(refW / aspect);
     this.W = refW; this.H = refH;
     this.dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
-    let sh = parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue('--h'));
-    if (!isFinite(sh) || sh <= 0) sh = Math.min(vh, 0.52 * vw);
-    this.sh = sh;
-    this.cssW = refW * sh;
-    this.cssH = refH * sh;
-    this.scale = sh;
+
+    /* ---- 1) UI 縮放基準（rem）：與畫布解耦，確保任何裝置文字都讀得到 ----
+       --h 直接以 px 寫入 CSS 變數，不依賴 dvh / min() 的支援度：
+       舊版 iPadOS Safari 不認得 dvh，代入 font-size 後會讓整份 rem 尺寸
+       退回 16px 基準，畫面就只剩一片黑。                                   */
+    const uiH = clamp(Math.min(vh, vw * 1.9), 460, 1000);
+    try {
+      document.documentElement.style.setProperty('--h', uiH.toFixed(2) + 'px');
+    } catch (e) { /* 極端情況下忽略，仍用計算值 */ }
+    this.sh = uiH;
+
+    /* ---- 2) 畫布：等比例塞進視窗（scale = 每個參考單位對應幾個 CSS px）---- */
+    this.scale = Math.min(vw / refW, vh / refH);
+    this.cssW = refW * this.scale;
+    this.cssH = refH * this.scale;
     this.aspect = aspect;
     this.mobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     this.laneCount = Store.data && Store.data.settings ? (Store.data.settings.lanes || 4) : 4;
